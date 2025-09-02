@@ -1,11 +1,33 @@
 import os
 from dotenv import load_dotenv
 import asyncio
-from pyrogram import Client, filters
+from pyrogram import Client, filters, types
 import json
 import re
 
 emote_table_file = "emote_table"
+
+class Search:
+
+    def __init__(self, dict: dict) -> None:
+        self._dict = dict
+
+    def find_emote(self, w: str):
+        if any([ord('а') <= ord(i) <= ord('я') for i in w]):
+            w = self.ru_to_en_keyboard(w)
+
+        result = []     
+        for key, value in self._dict.items():
+            if w.lower() in key.lower():
+                result.append(value)
+        return sorted(result, key=lambda x: len(x))
+
+    # https://github.com/nawinds/inline-stickers-search-bot/blob/master/modules/search.py
+    @staticmethod
+    def ru_to_en_keyboard(text: str) -> str:
+        layout = dict(zip(map(ord, '''йцукенгшщзхъфывапролджэячсмитьбю.ёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,Ё'''),
+                          '''qwertyuiop[]asdfghjkl;'zxcvbnm,./`QWERTYUIOP{}ASDFGHJKL:"ZXCVBNM<>?~'''))
+        return text.translate(layout)
 
 def findWholeWord(w):
     escaped_word = re.escape(w)
@@ -45,6 +67,22 @@ async def my_handler(client, message):
 async def sticker_handler(client, message):
     await message.reply(message.sticker.file_id)
 
+@app.on_message(filters.command("menu"))
+async def menu_handler(client, message):
+    bs = '\n'
+    await message.reply(f"{bs.join([pattern for pattern, _ in emote_table.items()])}", quote=False)
+
+@app.on_inline_query()
+async def inline_query(client, inline_query):
+    print(inline_query.query)
+    search = Search(emote_table)
+    result = [types.InlineQueryResultCachedSticker(sticker_file_id=file_id) for file_id in search.find_emote(w=inline_query.query)[:50]]
+    
+    await inline_query.answer(
+        results=result,
+        is_gallery=True
+    )
+
 @app.on_message(filters.command("add"))
 async def add_emote(client, message):
     if not (str(message.chat.id) in creds['admin']):
@@ -61,7 +99,9 @@ async def add_emote(client, message):
 
 
 try:
+    print("Starting ... ")
     app.run()
 finally:
+    print("Exiting ...")
     with open(emote_table_file, "w") as f:
-        json.dump(emote_table, f)
+        json.dump(emote_table, f)   

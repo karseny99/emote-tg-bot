@@ -1,0 +1,1 @@
+wsl --exec python3 main.py
